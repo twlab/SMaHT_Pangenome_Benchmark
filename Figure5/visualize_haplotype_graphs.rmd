@@ -1,0 +1,194 @@
+
+```{r}
+library("dplyr")
+library("tidyr")
+library("ggplot2")
+```
+
+
+```{r}
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked <- read.table("COLO829BL_R1_chm13_clipped_20x_new_chm13_masked.tsv", header=TRUE, sep="\t")
+```
+
+```{r}
+# for column h1_h2 through h3_h4, generate a table of the bitwise flags
+lapply(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked[,6:11], function(x) data.frame(table(x))) %>% bind_rows()->COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq
+
+# Add column names
+lapply(colnames(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked[,6:11]), function(X) rep(X,4)) %>% unlist()->COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Comparison
+
+# change "x" column to "Flag"
+colnames(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq)<-c("Flag", "Freq", "Comparison")
+
+# Create column where Flags are converted to interpretable values
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$FlagInterpretation<-factor(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Flag, levels=c("0", "2", "1", "3"), labels=c("Missing in both","Missing in one","Same","Different"), ordered=TRUE)
+
+# Replace h1, h2, h3, h4 with Mat, Pat, Rec1, Rec2
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Comparison<-gsub("h1", "Mat", COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Comparison)
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Comparison<-gsub("h2", "Pat", COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Comparison)
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Comparison<-gsub("h3", "Rec1", COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Comparison)
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Comparison<-gsub("h4", "Rec2", COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Comparison)
+
+# Replace "_" with "~"
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Comparison<-gsub("_", "~", COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Comparison)
+```
+
+```{r}
+ggplot(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq, aes(x=Comparison, y=Freq/1000000, fill=FlagInterpretation))+
+  geom_bar(stat="identity", position="dodge")+
+  # CS.THEME+
+  # scale_fill_viridis(discrete=TRUE)+
+  labs(title="COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq",
+       x="Comparison",
+       y="Frequency (M)",
+       fill="Genotype comparison")+
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5), legend.position="bottom")+
+  # legend size
+  theme(legend.text = element_text(size = 8), legend.title = element_text(size = 8))+
+  scale_y_continuous(labels = scales::comma)
+```
+
+
+```{r}
+# Merge data
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq$Dataset<-"COLO829BL_R1_chm13_clipped_20x_new_chm13_masked"
+
+# Combine data
+rbind(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_Flag_Freq)->Combined_Flag_Freq
+```
+
+```{r}
+ggplot(Combined_Flag_Freq, aes(x=Comparison, y=Freq/1000000, fill=FlagInterpretation))+
+  geom_bar(stat="identity", position="dodge")+
+  # CS.THEME+
+  # scale_fill_viridis(discrete=TRUE)+
+  labs(title="true versus recombinant haplotypes",
+       x="Comparison",
+       y="Frequency (M)",
+       fill="Genotype comparison")+
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5), legend.position="bottom")+
+  # legend size
+  theme(legend.text = element_text(size = 8), legend.title = element_text(size = 8))+
+  scale_y_continuous(labels = scales::comma)+
+  facet_grid(Dataset~.)
+```
+
+```{r}
+# For HG005_simu_R2_chm13_clipped, assume:
+# - h1_h3: Mat vs Rec1
+# - h2_h3: Pat vs Rec1
+# - h1_h4: Mat vs Rec2
+# - h2_h4: Pat vs Rec2
+# - h1_h2: Mat vs Pat (used to check for missing truth set alleles)
+#
+# For each parent's allele in each recombinant, if the truth set (Mat vs Pat) 
+# has missing data (flag "0" or "2"), then we assign "Missing".
+# Otherwise, we mark as "Captured" if the parent's comparison equals "1",
+# and "Not captured" otherwise.
+
+```
+
+```{r}
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked$Mat_truth <- ifelse(
+  COLO829BL_R1_chm13_clipped_20x_new_chm13_masked$h1_h2 %in% c("0", "2"),
+  "Missing",
+  ifelse(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked$h1_h3 == "1" | COLO829BL_R1_chm13_clipped_20x_new_chm13_masked$h1_h4 == "1", "Captured", "Not captured")
+)
+
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked$Pat_truth <- ifelse(
+  COLO829BL_R1_chm13_clipped_20x_new_chm13_masked$h1_h2 %in% c("0", "2"),
+  "Missing",
+  ifelse(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked$h2_h3 == "1" | COLO829BL_R1_chm13_clipped_20x_new_chm13_masked$h2_h4 == "1", "Captured", "Not captured")
+)
+```
+
+# region
+
+```{r eval=FALSE, include=FALSE}
+COLO829BL_R2_chm13_clipped_20x_mat_not_captured <- COLO829BL_R1_chm13_clipped_20x_new_chm13_masked[COLO829BL_R1_chm13_clipped_20x_new_chm13_masked$Mat_truth == "Not captured",]
+
+COLO829BL_R2_chm13_clipped_20x_pat_not_captured <- COLO829BL_R1_chm13_clipped_20x_new_chm13_masked[COLO829BL_R1_chm13_clipped_20x_new_chm13_masked$Pat_truth == "Not captured",]
+
+COLO829BL_R2_chm13_clipped_20x_mat_missing <- COLO829BL_R1_chm13_clipped_20x_new_chm13_masked[COLO829BL_R1_chm13_clipped_20x_new_chm13_masked$Mat_truth == "Missing",]
+
+COLO829BL_R2_chm13_clipped_20x_pat_missing <- COLO829BL_R1_chm13_clipped_20x_new_chm13_masked[COLO829BL_R1_chm13_clipped_20x_new_chm13_masked$Pat_truth == "Missing",]
+```
+
+
+
+
+```{r}
+# Transform the data from wide to long format
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_truth_long <- COLO829BL_R1_chm13_clipped_20x_new_chm13_masked %>%
+  dplyr::select(Mat_truth, Pat_truth) %>%
+  pivot_longer(cols = everything(), names_to = "Parent", values_to = "Status") %>%
+  group_by(Parent, Status) %>%
+  summarise(Count = n(), .groups="drop") %>%
+  group_by(Parent) %>%
+  mutate(Percent = Count/sum(Count)*100)
+
+# Print the summary data (optional)
+print(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_truth_long)
+```
+
+```{r}
+# Transform the data from wide to long format per chromosome
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_truth_full_long_chr <- COLO829BL_R1_chm13_clipped_20x_new_chm13_masked %>%
+  dplyr::select(Mat_truth, Pat_truth, CHROM) %>%
+  pivot_longer(cols = c(Mat_truth, Pat_truth), names_to = "Parent", values_to = "Status") %>%
+  group_by(CHROM, Parent, Status) %>%
+  summarise(Count = n(), .groups="drop") %>%
+  group_by(CHROM, Parent) %>%
+  mutate(Percent = Count/sum(Count)*100)
+
+# Print the summary data (optional)
+print(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_truth_full_long_chr)
+```
+
+```{r}
+# filter out non primary chromosomes (chr1, chr2, ..., chr22, chrX, chrY)
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_truth_full_long_chr<-COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_truth_full_long_chr %>% filter(CHROM %in% c(paste0("chr",1:22)))
+
+# order chromosomes
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_truth_full_long_chr$CHROM<-factor(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_truth_full_long_chr$CHROM, levels=c(paste0("chr",1:22)))
+```
+
+```{r}
+# plot truth set allele capture for COLO829BL_R2_chm13_clipped_20x per chromosome, with each chromosome as X-axis and percentage as Y-axis
+ggplot(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_truth_full_long_chr, aes(x = CHROM, y = Percent, fill = Status)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "Truth Set Allele Capture per Chromosome",
+       y = "Percentage (%)",
+       x = "Chromosome",
+       fill = "Status") +
+  scale_x_discrete(expand = c(0,0)) +
+  # CS.THEME +
+  # scale_fill_viridis(discrete = TRUE, option="cividis")+
+  facet_grid(Parent~.)+
+  # rotate x-axis labels
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+```
+
+```{r}
+# Merge data
+COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_truth_long$Dataset<-"COLO829BL_R1_\nchm13_20x"
+
+# Combine data
+rbind(COLO829BL_R1_chm13_clipped_20x_new_chm13_masked_truth_long)->Combined_truth_long
+```
+
+```{r}
+p <- ggplot(Combined_truth_long, aes(y = Parent, x = Percent, fill = Status)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "Truth Set Allele Capture",
+       y = "Parent",
+       x = "Percentage (%)") +
+  scale_x_continuous(labels = scales::percent_format(scale = 1), expand = c(0,0)) +
+  # CS.THEME +
+  # scale_fill_viridis(discrete = TRUE, option="cividis")+
+  facet_grid(Dataset~.)
+
+ggsave("truth_set_capture_COLO829BL.svg", plot = p, width = 8, height = 6, dpi = 300)
+
+```
+
